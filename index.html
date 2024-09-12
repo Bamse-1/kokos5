@@ -1,0 +1,105 @@
+let currentTicker = 'NVDA';  // Set the default ticker
+
+// Polygon.io API Key
+const apiKey = 'bjruZzPPloZe4BVn8pxbJ3ezDQ7KiWmc';
+
+// Fetch stock data from Polygon.io
+async function fetchStockData(ticker, days) {
+    const endDate = new Date().toISOString().split('T')[0];
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    const formattedStartDate = startDate.toISOString().split('T')[0];
+
+    const url = `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/day/${formattedStartDate}/${endDate}?apiKey=${apiKey}`;
+
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        return data.results.map(result => ({
+            date: result.t,
+            close: result.c
+        }));
+    } catch (error) {
+        console.error("Error fetching stock data:", error);
+        return [];
+    }
+}
+
+// Fetch news data from Polygon.io
+async function fetchCompanyNews(ticker) {
+    const url = `https://api.polygon.io/v2/reference/news?ticker=${ticker}&limit=5&apiKey=${apiKey}`;
+
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        return data.results.map(news => ({
+            title: news.title,
+            url: news.article_url,
+            summary: news.description,
+            published_at: new Date(news.published_utc).toLocaleString()
+        }));
+    } catch (error) {
+        console.error("Error fetching news data:", error);
+        return [];
+    }
+}
+
+// Render stock chart
+function renderStockChart(containerId, stockData) {
+    Highcharts.stockChart(containerId, {
+        rangeSelector: {
+            selected: 1
+        },
+        title: {
+            text: 'Stock Price'
+        },
+        series: [{
+            name: 'Price',
+            data: stockData,
+            tooltip: {
+                valueDecimals: 2
+            }
+        }]
+    });
+}
+
+// Update the graph when a new time range or company is selected
+async function updateGraph(ticker, days) {
+    const stockData = await fetchStockData(ticker, parseInt(days));
+    const formattedData = stockData.map(point => [point.date, point.close]);
+    renderStockChart('nvidia-graph', formattedData);
+}
+
+// Show company stock and news
+async function showCompanyStock(ticker, companyName) {
+    // Update the graph header with the selected company name
+    document.querySelector('.graph-header h2').textContent = companyName;
+
+    // Set the current ticker to the newly selected company
+    currentTicker = ticker;
+
+    // Fetch and display stock data for the newly selected company (default to 1 day)
+    updateGraph(currentTicker, 1);
+
+    // Fetch and display news for the selected company
+    const newsList = document.getElementById('news-list');
+    newsList.innerHTML = '<li>Loading news...</li>'; // Show a loading message while news is being fetched
+
+    const newsData = await fetchCompanyNews(ticker);
+    newsList.innerHTML = ''; // Clear the loading message
+
+    // Display each news article
+    newsData.forEach(news => {
+        const newsItem = document.createElement('li');
+        newsItem.innerHTML = `
+            <a href="${news.url}" target="_blank"><strong>${news.title}</strong></a>
+            <p>${news.summary}</p>
+            <small>Published on: ${news.published_at}</small>
+        `;
+        newsList.appendChild(newsItem);
+    });
+}
+
+// Initial load
+updateGraph(currentTicker, 1);  // Start by showing Nvidia stock
+showCompanyStock('NVDA', 'Nvidia Stock Price');  // Start by showing Nvidia news
